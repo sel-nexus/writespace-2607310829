@@ -15,6 +15,7 @@ async function register(page, username, displayName) {
 /** Open responsive member navigation before following a visible link. */
 async function followNavigation(page, name) {
   const nav = page.getByRole('navigation', { name: 'Member navigation' });
+  await expect(nav).toBeVisible();
   const link = nav.getByRole('link', { name, exact: true });
   if (!await link.isVisible()) await page.getByRole('button', { name: 'Toggle navigation' }).click();
   await link.click();

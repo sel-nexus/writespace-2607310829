@@ -32,6 +32,7 @@ async function signIn(page, name = 'ada') {
 
 /** Follow persistent member navigation, opening its real mobile disclosure if needed. */
 async function allBlogs(page) {
+  await expect(page.getByRole('navigation', { name: 'Member navigation' })).toBeVisible();
   const toggle = page.getByRole('button', { name: 'Toggle navigation' });
   if (await toggle.isVisible()) await toggle.click();
   await page.getByRole('navigation', { name: 'Member navigation' }).getByRole('link', { name: 'All Blogs', exact: true }).click();

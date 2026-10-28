@@ -12,7 +12,9 @@ async function login(page, username = 'admin', password = 'admin') {
 
 /** Follow the actual responsive navbar, opening the mobile disclosure when necessary. */
 async function navigate(page, name) {
-  const link = page.getByRole('navigation', { name: 'Member navigation' }).getByRole('link', { name, exact: true });
+  const nav = page.getByRole('navigation', { name: 'Member navigation' });
+  await expect(nav).toBeVisible();
+  const link = nav.getByRole('link', { name, exact: true });
   if (!await link.isVisible()) await page.getByRole('button', { name: 'Toggle navigation' }).click();
   await link.click();
 }
