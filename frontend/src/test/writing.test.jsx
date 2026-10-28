@@ -6,7 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import App from '../App.jsx';
 import { clearSession, login } from '../utils/auth.js';
 import { getPosts, savePosts, saveUsers } from '../utils/storage.js';
-import { createPost, updatePost, validatePost } from '../utils/posts.js';
+import { createPost, updatePost, deletePost, validatePost } from '../utils/posts.js';
 
 const member = {
   id: 'ada', username: 'ada', displayName: 'Ada Writer', password: 'demo', role: 'user',
@@ -150,17 +150,32 @@ describe('live writing mutations', () => {
     expect(() => operation === 'create' ? createPost(fields) : updatePost('one', fields)).toThrow('Could not save posts');
     expect(getPosts()).toEqual([post]);
   });
-  it('fails closed on unavailable post reads during edit without replacing stored data', () => {
+  it.each(['create', 'update', 'delete'])('refuses %s on unavailable post reads while writes remain usable', (operation) => {
     login('ada', 'demo');
-    savePosts([post]);
-    const read = Storage.prototype.getItem;
-    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (key) {
+    savePosts([post, other]);
+    const retained = localStorage.getItem('writespace_posts');
+    const originalRead = Storage.prototype.getItem;
+    const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (key) {
       if (key === 'writespace_posts') throw new Error('blocked');
-      return read.call(this, key);
+      return originalRead.call(this, key);
     });
-    expect(() => updatePost('one', fields)).toThrow('Post not found');
-    spy.mockRestore();
-    expect(getPosts()).toEqual([post]);
+    localStorage.setItem('write_probe', 'usable');
+    expect(localStorage.getItem('write_probe')).toBe('usable');
+    expect(getPosts()).toEqual([]);
+    expect(() => operation === 'create' ? createPost(fields)
+      : operation === 'update' ? updatePost('one', fields) : deletePost('one')).toThrow('Could not read posts');
+    read.mockRestore();
+    expect(localStorage.getItem('writespace_posts')).toBe(retained);
+    expect(getPosts()).toEqual([post, other]);
+  });
+  it.each(['create', 'update', 'delete'])('refuses %s on corrupt post collections without dropping invalid siblings', (operation) => {
+    login('ada', 'demo');
+    for (const raw of ['{', 'null', '{}', JSON.stringify([post, { ...other, id: '' }])]) {
+      localStorage.setItem('writespace_posts', raw);
+      expect(() => operation === 'create' ? createPost(fields)
+        : operation === 'update' ? updatePost('one', fields) : deletePost('one')).toThrow('Could not read posts');
+      expect(localStorage.getItem('writespace_posts')).toBe(raw);
+    }
   });
 });
 

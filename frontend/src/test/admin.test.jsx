@@ -140,6 +140,31 @@ describe('dashboard', () => {
     expect(screen.getByLabelText('Title')).toHaveValue('Post 6');
     expect(screen.getByLabelText('Current route')).toHaveTextContent('/edit/post-6');
   });
+  it.each([
+    ['read', '/blog/a%2Fb%3F%23'],
+    ['edit', '/edit/a%2Fb%3F%23'],
+  ])('opens the correct stored record from the dashboard %s link with an encoded ID', async (action, route) => {
+    const record = { ...post(2), id: 'a/b?#', title: 'Special ID publication', content: 'Text belonging to the special ID record.' };
+    const records = [post(1), record];
+    savePosts(records);
+    mount(<App />);
+    const recent = screen.getByRole('region', { name: 'Recent Posts' });
+    const link = within(recent).getByRole('link', {
+      name: action === 'read' ? record.title : `Edit ${record.title}`, exact: true,
+    });
+    expect(link).toHaveAttribute('href', route);
+    await userEvent.click(link);
+    expect(screen.getByLabelText('Current route').textContent).toBe(route);
+    if (action === 'read') {
+      expect(screen.getByRole('heading', { level: 1, name: record.title, exact: true })).toBeVisible();
+      expect(screen.getByText(record.content, { exact: true })).toBeVisible();
+    } else {
+      expect(screen.getByRole('heading', { name: 'Edit post', exact: true })).toBeVisible();
+      expect(screen.getByLabelText('Title')).toHaveValue(record.title);
+      expect(screen.getByLabelText('Content')).toHaveValue(record.content);
+    }
+    expect(getPosts()).toEqual(records);
+  });
   it('cancels without mutation then confirms a foreign post deletion and promotes the sixth newest', async () => {
     savePosts([1, 2, 3, 4, 5, 6].map(post));
     mount(<AdminDashboard />);

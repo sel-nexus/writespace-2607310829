@@ -61,7 +61,7 @@ export default function AdminDashboard() {
             {posts.slice(0, 5).map((post) => (
               <li key={post.id} className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <Link to={`/blog/${post.id}`} className="break-words font-semibold text-slate-900 underline focus-visible:ring-2">
+                  <Link to={`/blog/${encodeURIComponent(post.id)}`} className="break-words font-semibold text-slate-900 underline focus-visible:ring-2">
                     {post.title}
                   </Link>
                   <p className="mt-1 break-words text-sm text-slate-500">
@@ -70,7 +70,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex shrink-0 gap-2">
                   <Link
-                    to={`/edit/${post.id}`}
+                    to={`/edit/${encodeURIComponent(post.id)}`}
                     aria-label={`Edit ${post.title}`}
                     className="rounded-lg px-4 py-2 text-indigo-700 hover:bg-indigo-50 focus-visible:ring-2"
                   >

@@ -7,6 +7,7 @@ import App from '../App.jsx';
 import LoginPage from '../pages/LoginPage.jsx';
 import RegisterPage from '../pages/RegisterPage.jsx';
 import { Navbar } from '../components/Navbar.jsx';
+import { UserRow } from '../components/UserRow.jsx';
 import { PublicNavbar } from '../components/PublicNavbar.jsx';
 import { Avatar, getAvatar } from '../components/Avatar.jsx';
 import { ProtectedRoute } from '../components/ProtectedRoute.jsx';
@@ -195,6 +196,90 @@ describe('account and session business rules', () => {
     expect(() => register({ ...fields, username: 'new', confirmPassword: 'bad' })).toThrow('Passwords do not match.');
     expect(getUsers()).toEqual([account]);
   });
+  it.each(['create', 'register', 'delete'])('refuses %s on unavailable account reads while writes remain usable', (operation) => {
+    saveUsers([account]);
+    const session = login('admin', 'admin');
+    const retained = localStorage.getItem('writespace_users');
+    const originalRead = Storage.prototype.getItem;
+    const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (key) {
+      if (key === 'writespace_users') throw new Error('blocked');
+      return originalRead.call(this, key);
+    });
+    localStorage.setItem('write_probe', 'usable');
+    expect(localStorage.getItem('write_probe')).toBe('usable');
+    expect(getUsers()).toEqual([]);
+    const input = { ...fields, username: 'new-member', role: 'user' };
+    expect(() => operation === 'create' ? createUser(input)
+      : operation === 'register' ? register(input) : deleteUser(account.id)).toThrow('Could not read users');
+    expect(getSession()).toEqual(session);
+    read.mockRestore();
+    expect(localStorage.getItem('writespace_users')).toBe(retained);
+    expect(getUsers()).toEqual([account]);
+  });
+  it.each(['create', 'register', 'delete'])('refuses %s on corrupt account collections without fallback overwrite', (operation) => {
+    login('admin', 'admin');
+    for (const raw of ['{', 'null', '{}', JSON.stringify([account, { ...account, id: '' }])]) {
+      localStorage.setItem('writespace_users', raw);
+      const input = { ...fields, username: 'new-member', role: 'user' };
+      expect(() => operation === 'create' ? createUser(input)
+        : operation === 'register' ? register(input) : deleteUser(account.id)).toThrow('Could not read users');
+      expect(localStorage.getItem('writespace_users')).toBe(raw);
+    }
+  });
+  it.each(['displayName', 'username', 'password', 'role'])('rejects whitespace-only required account %s without mutation', (key) => {
+    saveUsers([account]);
+    const session = login('admin', 'admin');
+    const input = { displayName: 'New Writer', username: 'new-writer', password: 'valid-pass', role: 'user', [key]: ' \t\n ' };
+    const message = key === 'role' ? 'Choose Admin or user.'
+      : `${{ displayName: 'Display name', username: 'Username', password: 'Password' }[key]} is required.`;
+    expect(validateUser(input)).toEqual({ [key]: message });
+    expect(() => createUser(input)).toThrow(message);
+    expect(getUsers()).toEqual([account]);
+    expect(getSession()).toEqual(session);
+  });
+  it.each(['displayName', 'username', 'password', 'role'])('rejects invalid types for account %s with all other fields valid', (key) => {
+    saveUsers([account]);
+    const session = login('admin', 'admin');
+    for (const value of [null, undefined, 42, true, [], {}]) {
+      const input = { displayName: 'New Writer', username: 'new-writer', password: 'valid-pass', role: 'user', [key]: value };
+      const message = key === 'role' ? 'Choose Admin or user.'
+        : `${{ displayName: 'Display name', username: 'Username', password: 'Password' }[key]} is required.`;
+      expect(validateUser(input)).toEqual({ [key]: message });
+      expect(() => createUser(input)).toThrow(message);
+      expect(getUsers()).toEqual([account]);
+      expect(getSession()).toEqual(session);
+    }
+  });
+  it.each(['displayName', 'username', 'password', 'confirmPassword'])('rejects whitespace and invalid types for registration %s without mutation', (key) => {
+    saveUsers([account]);
+    for (const value of [' \t\n ', null, undefined, 42, true, [], {}]) {
+      const input = { ...fields, username: 'new-writer', role: 'user', [key]: value };
+      const message = `${{ displayName: 'Display name', username: 'Username', password: 'Password', confirmPassword: 'Confirm password' }[key]} is required.`;
+      expect(validateUser(input)).toHaveProperty(key, message);
+      expect(() => register(input)).toThrow(message);
+      expect(getUsers()).toEqual([account]);
+      expect(getSession()).toBeNull();
+    }
+  });
+  it.each(['create', 'register'])('accepts substantial account strings during %s without invented limits', (operation) => {
+    saveUsers([account]);
+    const input = { displayName: 'Writer'.repeat(2000), username: 'handle'.repeat(2000), password: 'secret '.repeat(2000), role: 'user' };
+    expect(validateUser(input)).toEqual({});
+    if (operation === 'create') login('admin', 'admin');
+    const result = operation === 'create' ? createUser(input) : register({ ...input, confirmPassword: input.password });
+    const saved = getUsers()[1];
+    expect(getUsers()).toEqual([account, { ...saved, ...input }]);
+    if (operation === 'create') {
+      expect(result).toEqual(saved);
+      expect(getSession()).toEqual({ userId: 'admin', username: 'admin', displayName: 'Admin', role: 'admin' });
+    } else {
+      expect(result).toEqual({ userId: saved.id, username: input.username, displayName: input.displayName, role: 'user' });
+      expect(getSession()).toEqual(result);
+    }
+    expect(login(input.username, input.password)).toEqual({
+      userId: saved.id, username: input.username, displayName: input.displayName, role: 'user',
+    });
+  });
   it('reports registration storage failure and makes a saved account recoverable after session failure', () => {
     const original = Storage.prototype.setItem;
     const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('full'); });
@@ -242,6 +327,30 @@ describe('account and session business rules', () => {
 });
 
 describe('guards and role navigation', () => {
+  it.each([false, true])('renders XSS-like account strings literally in navigation and metadata (mobile=%s)', (mobile) => {
+    const input = { displayName: '<img src=x onerror=alert(1)>', username: '<script>alert(2)</script>', password: 'safe-pass', confirmPassword: 'safe-pass' };
+    const session = register(input);
+    const saved = getUsers()[0];
+    const metadata = <UserRow user={saved} currentUserId={saved.id} onDelete={vi.fn()} mobile={mobile} />;
+    const view = mount(
+      <>
+        <Navbar session={session} onSessionChange={vi.fn()} />
+        {mobile ? metadata : (
+          <table>
+            <tbody>{metadata}</tbody>
+          </table>
+        )}
+      </>,
+    );
+    const navigation = within(screen.getByRole('navigation'));
+    expect(navigation.getByText(input.displayName).textContent).toBe(input.displayName);
+    expect(navigation.getByRole('button', { name: `Account: ${input.displayName}`, exact: true })).toBeVisible();
+    const row = mobile ? screen.getByRole('article') : screen.getByRole('row');
+    expect(within(row).getByText(input.displayName).textContent).toBe(input.displayName);
+    expect(within(row).getByText(input.username).textContent).toBe(input.username);
+    expect(view.container.querySelector('img, script, [onerror]')).toBeNull();
+    expect(saved).toMatchObject({ displayName: input.displayName, username: input.username });
+  });
   it('re-reads the guard on rerender after account removal', () => {
     saveUsers([account]);
     login('ada', 'demo-pass');
@@ -361,8 +470,41 @@ describe('guards and role navigation', () => {
     await user.click(chip);
     await user.click(screen.getByRole('button', { name: 'Logout' }));
     expect(getSession()).toBeNull();
-    expect(screen.getByLabelText('Current route')).toHaveTextContent('/');
+    expect(screen.getByLabelText('Current route')).toHaveTextContent(/^\/$/);
     expect(screen.getByRole('link', { name: 'Get Started' })).toBeVisible();
+  });
+  it.each([
+    ['admin', '/admin', '/admin', 'Admin Dashboard'],
+    ['admin', '/write', '/write', 'Write a post'],
+    ['admin', '/blog/post', '/blog/post', post.title],
+    ['user', '/admin', '/blogs', 'All Blogs'],
+    ['user', '/write', '/write', 'Write a post'],
+    ['user', '/blog/post', '/blog/post', post.title],
+  ])('logs %s out from %s to the public home, never login', async (role, entry, allowedPath, heading) => {
+    const user = userEvent.setup();
+    saveUsers([{ ...account, role }]);
+    savePosts([post]);
+    const session = login('ada', 'demo-pass');
+    mount(<App />, entry);
+    // Ordinary members must still be denied the administration route before logout.
+    expect(screen.getByLabelText('Current route').textContent).toBe(allowedPath);
+    expect(screen.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+    expect(getSession()).toEqual(session);
+    await user.click(screen.getByRole('button', { name: 'Account: Ada Writer', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Logout', exact: true }));
+
+    expect(screen.getByLabelText('Current route').textContent).toBe('/');
+    expect(getSession()).toBeNull();
+    expect(localStorage.getItem('writespace_session')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'WriteSpace', exact: true })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Welcome back.' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Member navigation' })).not.toBeInTheDocument();
+    const publicNavigation = within(screen.getByRole('navigation', { name: 'Public navigation' }));
+    expect(publicNavigation.getByRole('link', { name: 'Get Started', exact: true })).toBeVisible();
+    expect(publicNavigation.getByRole('link', { name: 'Login', exact: true })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: 'Start Reading', exact: true })).toHaveAttribute('href', '/login');
+    expect(getUsers()).toEqual([{ ...account, role }]);
+    expect(getPosts()).toEqual([post]);
   });
   it('keeps a failed logout visible without clearing the account or navigating', async () => {
     const user = userEvent.setup();
@@ -374,6 +516,42 @@ describe('guards and role navigation', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Could not log out');
     expect(getSession()).toEqual(session);
     expect(screen.getByLabelText('Current route')).toHaveTextContent('/admin');
+  });
+  it.each([
+    ['admin', '/admin'], ['admin', '/write'], ['admin', '/blog/post'],
+    ['user', '/blogs'], ['user', '/write'], ['user', '/blog/post'],
+  ])('fails closed on external session removal for %s at %s', (role, path) => {
+    saveUsers([{ ...account, role }]);
+    savePosts([post]);
+    login('ada', 'demo-pass');
+    mount(<App />, path);
+    expect(screen.getByLabelText('Current route').textContent).toBe(path);
+    clearSession();
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: 'writespace_session' })));
+    expect(screen.getByLabelText('Current route').textContent).toBe('/login');
+    expect(screen.getByRole('heading', { name: 'Welcome back.' })).toBeVisible();
+    expect(screen.queryByRole('navigation', { name: 'Member navigation' })).not.toBeInTheDocument();
+    expect(getSession()).toBeNull();
+  });
+  it.each([
+    ['admin', '/admin'], ['admin', '/write'], ['admin', '/blog/post'],
+    ['user', '/blogs'], ['user', '/write'], ['user', '/blog/post'],
+  ])('retains the App route and session when logout clearing fails for %s at %s', async (role, path) => {
+    const user = userEvent.setup();
+    saveUsers([{ ...account, role }]);
+    savePosts([post]);
+    const session = login('ada', 'demo-pass');
+    const storedSession = localStorage.getItem('writespace_session');
+    mount(<App />, path);
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('blocked'); });
+    await user.click(screen.getByRole('button', { name: 'Account: Ada Writer', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Logout', exact: true }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not log out');
+    expect(screen.getByLabelText('Current route').textContent).toBe(path);
+    expect(getSession()).toEqual(session);
+    expect(localStorage.getItem('writespace_session')).toBe(storedSession);
+    expect(screen.getByRole('navigation', { name: 'Member navigation' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Welcome back.' })).not.toBeInTheDocument();
   });
 });
 

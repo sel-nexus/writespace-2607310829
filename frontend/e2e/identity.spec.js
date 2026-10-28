@@ -33,7 +33,7 @@ test('register, reload, logout, reject duplicates and mismatch, then log in', as
   if (testInfo.project.name === 'mobile') {
     await page.getByRole('button', { name: 'Toggle navigation' }).click();
   }
-  await page.getByRole('link', { name: 'Write', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Member navigation' }).getByRole('link', { name: 'Write', exact: true }).click();
   await expect(page).toHaveURL(/\/write$/);
   await captureEvidence(page, testInfo, 'member-navigation');
   await logout(page, 'Ada Writer');
@@ -42,7 +42,10 @@ test('register, reload, logout, reject duplicates and mismatch, then log in', as
   await page.getByRole('button', { name: 'Create Account' }).click();
   await expect(page.getByRole('alert')).toHaveText('Username is already taken.');
   await page.getByRole('main').getByRole('link', { name: 'Login', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('heading', { name: 'Welcome back.', exact: true })).toBeVisible();
   await page.getByLabel('Username', { exact: true }).fill('ada');
+  await expect(page.getByLabel('Username', { exact: true })).toHaveValue('ada');
   await page.getByLabel('Password', { exact: true }).fill('wrong');
   await page.getByRole('button', { name: 'Login', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('Invalid username or password.');

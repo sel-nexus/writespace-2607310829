@@ -1,5 +1,5 @@
 /** Enforce local account rules and validate sessions against current accounts. */
-import { getUsers, saveUsers } from './storage.js';
+import { getUsers, getUsersForMutation, saveUsers } from './storage.js';
 
 export const DEFAULT_ADMIN = Object.freeze({
   id: 'admin', displayName: 'Admin', username: 'admin', password: 'admin',
@@ -138,11 +138,15 @@ export function createUser(fields) {
 function persistUser(fields) {
   const errors = validateUser(fields);
   if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+  const users = getUsersForMutation();
+  if (users.some((user) => normalize(user.username) === normalize(fields.username))) {
+    throw new Error('Username is already taken.');
+  }
   const account = {
     id: crypto.randomUUID(), displayName: fields.displayName.trim(), username: fields.username.trim(),
     password: fields.password, role: fields.role, createdAt: new Date().toISOString(),
   };
-  saveUsers([...getUsers(), account]);
+  saveUsers([...users, account]);
   return account;
 }
 
@@ -171,7 +175,7 @@ export function deleteUser(userId) {
   if (session?.role !== 'admin') throw new Error('Admin access is required.');
   if (userId === DEFAULT_ADMIN.id) throw new Error('Default admin cannot be deleted.');
   if (userId === session.userId) throw new Error('You cannot delete your current account.');
-  const users = getUsers();
+  const users = getUsersForMutation();
   if (!users.some((user) => user.id === userId)) throw new Error('User not found.');
   const remaining = users.filter((user) => user.id !== userId);
   saveUsers(remaining);

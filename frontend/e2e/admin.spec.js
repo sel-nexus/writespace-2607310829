@@ -3,7 +3,7 @@ import { test, expect, captureEvidence } from './fixtures.js';
 
 /** Log in through the visible public login link. */
 async function login(page, username = 'admin', password = 'admin') {
-  await page.getByRole('navigation').getByRole('link', { name: 'Login', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Public navigation' }).getByRole('link', { name: 'Login', exact: true }).click();
   await page.getByLabel('Username', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Login', exact: true }).click();

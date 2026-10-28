@@ -52,12 +52,117 @@ test('empty public landing routes reading to real login and gives member an empt
   await page.getByLabel('Username', { exact: true }).fill('ada');
   await page.getByLabel('Password', { exact: true }).fill('demo');
   await page.getByRole('button', { name: 'Login', exact: true }).click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('writespace_session')))).toEqual({
+    userId: 'ada', username: 'ada', displayName: 'Ada Writer', role: 'user',
+  });
   await expect(page.getByText('No blogs yet. Be the first to write one!')).toBeVisible();
   await captureEvidence(page, testInfo, 'member-empty');
   await page.getByRole('main').getByRole('link', { name: 'Write', exact: true }).click();
   await expect(page).toHaveURL(/\/write$/);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('writespace_posts')))).toEqual([]);
 });
+
+test('hero Get Started Free creates a real ordinary account and password-free session', async ({ page }, testInfo) => {
+  await seed(page);
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Get Started Free', exact: true }).click();
+  await expect(page).toHaveURL(/\/register$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your space starts here.');
+  await page.getByLabel('Display Name', { exact: true }).fill('New Writer');
+  await page.getByLabel('Username', { exact: true }).fill('new-writer');
+  await page.getByLabel('Password', { exact: true }).fill('local-demo');
+  await page.getByLabel('Confirm Password', { exact: true }).fill('local-demo');
+  await page.getByRole('button', { name: 'Create Account', exact: true }).click();
+  await expect(page).toHaveURL(/\/blogs$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('All Blogs');
+  const stored = await page.evaluate(() => ({
+    users: JSON.parse(localStorage.getItem('writespace_users')),
+    session: JSON.parse(localStorage.getItem('writespace_session')),
+    posts: JSON.parse(localStorage.getItem('writespace_posts')),
+  }));
+  expect(stored.users).toHaveLength(2);
+  expect(stored.users[0]).toEqual(account);
+  expect(stored.users[1]).toEqual({
+    id: expect.any(String), createdAt: expect.any(String), displayName: 'New Writer',
+    username: 'new-writer', password: 'local-demo', role: 'user',
+  });
+  expect(stored.session).toEqual({
+    userId: stored.users[1].id, username: 'new-writer', displayName: 'New Writer', role: 'user',
+  });
+  expect(stored.posts).toEqual(posts);
+  await expect(page.getByRole('link', { name: /^Edit Story/ })).toHaveCount(0);
+  await captureEvidence(page, testInfo, 'hero-registered-member');
+});
+
+for (const [name, route, heading] of [
+  ['Home', /\/$/, 'WriteSpace'], ['All Blogs', /\/login$/, 'Welcome back.'],
+  ['Login', /\/login$/, 'Welcome back.'], ['Register', /\/register$/, 'Your space starts here.'],
+]) {
+  test(`public footer ${name} clicks through the real route and guest guard`, async ({ page }, testInfo) => {
+    await seed(page);
+    await page.goto('/');
+    await page.getByRole('navigation', { name: 'Footer navigation' })
+      .getByRole('link', { name, exact: true }).click();
+    await expect(page).toHaveURL(route);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
+    expect(await page.evaluate(() => localStorage.getItem('writespace_session'))).toBeNull();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('writespace_users')))).toEqual([account]);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('writespace_posts')))).toEqual(posts);
+    await captureEvidence(page, testInfo, `footer-${name.toLowerCase().replaceAll(' ', '-')}`);
+  });
+}
+
+test('ordinary member clicks authenticated Start Reading, Go to Dashboard and own list-card Edit', async ({ page }, testInfo) => {
+  await seed(page);
+  await page.goto('/');
+  await signIn(page);
+  await expect(page).toHaveURL(/\/blogs$/);
+  const session = { userId: 'ada', username: 'ada', displayName: 'Ada Writer', role: 'user' };
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('writespace_session')))).toEqual(session);
+  await page.getByRole('navigation', { name: 'Member navigation' })
+    .getByRole('link', { name: 'WriteSpace', exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole('link', { name: 'Start Reading', exact: true }).click();
+  await expect(page).toHaveURL(/\/blogs$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('All Blogs');
+  await expect(page.getByRole('article')).toHaveCount(4);
+  await page.getByRole('navigation', { name: 'Member navigation' })
+    .getByRole('link', { name: 'WriteSpace', exact: true }).click();
+  await page.getByRole('link', { name: 'Go to Dashboard', exact: true }).click();
+  await expect(page).toHaveURL(/\/blogs$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('All Blogs');
+  await expect(page.getByRole('link', { name: 'Edit Story 3', exact: true })).toHaveCount(0);
+  await page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Story 4', exact: true }) })
+    .getByRole('link', { name: 'Edit Story 4', exact: true }).click();
+  await expect(page).toHaveURL(/\/edit\/story-4$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Edit post');
+  await expect(page.getByLabel('Title', { exact: true })).toHaveValue(posts[3].title);
+  await expect(page.getByLabel('Content', { exact: true })).toHaveValue(posts[3].content);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('writespace_posts')))).toEqual(posts);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('writespace_session')))).toEqual(session);
+  await captureEvidence(page, testInfo, 'member-list-card-edit');
+});
+
+for (const reducedMotion of ['no-preference', 'reduce']) {
+  test(`hero preview card respects ${reducedMotion} motion preference`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ reducedMotion });
+    await seed(page);
+    await page.goto('/');
+    const preview = page.getByRole('complementary', { name: 'Inside your journal' });
+    await expect(preview.getByRole('article')).toContainText('Story 4');
+    const motion = await preview.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { name: style.animationName, duration: style.animationDuration };
+    });
+    expect(motion.name).toBe(reducedMotion === 'reduce' ? 'none' : 'bounce');
+    if (reducedMotion === 'no-preference') expect(motion.duration).toBe('6s');
+    await expect(preview.locator('[class*="animate-"]')).toHaveCount(0);
+    await captureEvidence(page, testInfo, `hero-motion-${reducedMotion}`);
+    await testInfo.attach('hero-motion', {
+      body: JSON.stringify({ reducedMotion, ...motion }), contentType: 'application/json',
+    });
+  });
+}
 
 test('latest three public previews use actual data and guest selection fails closed', async ({ page }, testInfo) => {
   await seed(page);
@@ -136,6 +241,8 @@ test('missing direct entry authenticates through real form, then missing reader 
   await page.getByLabel('Username', { exact: true }).fill('ada');
   await page.getByLabel('Password', { exact: true }).fill('demo');
   await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await expect(page).toHaveURL(/\/blogs$/);
+  await expect(page.getByRole('link', { name: 'Read Story 4' })).toBeVisible();
   // A real post becomes stale while its card is on screen; its link is the missing entry.
   await page.evaluate(() => localStorage.setItem('writespace_posts', '[]'));
   await page.getByRole('link', { name: 'Read Story 4' }).click();

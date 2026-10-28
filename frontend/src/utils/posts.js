@@ -1,5 +1,5 @@
 /** Read local publications and enforce live ownership before deletion. */
-import { getPosts, savePosts } from './storage.js';
+import { getPosts, getPostsForMutation, savePosts } from './storage.js';
 import { getSession } from './auth.js';
 
 /** Return valid posts newest first without changing persisted order.
@@ -56,7 +56,7 @@ export function canManagePost(post, session = getSession()) {
 export function deletePost(id) {
   const session = getSession();
   if (!session) throw new Error('Please log in before deleting a post.');
-  const posts = getPosts();
+  const posts = getPostsForMutation();
   const matches = posts.filter((post) => post.id === id);
   if (typeof id !== 'string' || !id.trim() || !matches.length) throw new Error('Post not found.');
   if (!matches.every((post) => canManagePost(post, session))) {
@@ -96,11 +96,12 @@ export function createPost(fields) {
   if (!session) throw new Error('Please log in before publishing a post.');
   const errors = validatePost(fields);
   if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+  const posts = getPostsForMutation();
   const post = {
     id: crypto.randomUUID(), title: fields.title.trim(), content: fields.content,
     createdAt: new Date().toISOString(), authorId: session.userId, authorName: session.displayName,
   };
-  savePosts([...getPosts(), post]);
+  savePosts([...posts, post]);
   return post;
 }
 
@@ -115,7 +116,7 @@ export function createPost(fields) {
 export function updatePost(id, fields) {
   const session = getSession();
   if (!session) throw new Error('Please log in before editing a post.');
-  const posts = getPosts();
+  const posts = getPostsForMutation();
   const matches = posts.filter((post) => post.id === id);
   if (typeof id !== 'string' || !id.trim() || !matches.length) throw new Error('Post not found.');
   if (!matches.every((post) => canManagePost(post, session))) {

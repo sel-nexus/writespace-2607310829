@@ -151,7 +151,7 @@ describe('live deletion utility', () => {
       if (key === 'writespace_posts') throw new Error('blocked');
       return read.call(this, key);
     });
-    expect(() => deletePost('one')).toThrow('Post not found');
+    expect(() => deletePost('one')).toThrow('Could not read posts');
     spy.mockRestore();
     expect(getPosts()).toEqual([post]);
   });
@@ -221,6 +221,80 @@ describe('Home collection', () => {
 });
 
 describe('public landing', () => {
+  it.each([false, true])('animates the preview wrapper rather than labels with populated=%s', (populated) => {
+    if (populated) savePosts([post]);
+    mount(<LandingPage />);
+    const preview = screen.getByRole('complementary', { name: 'Inside your journal' });
+    expect(preview).toHaveClass('motion-safe:animate-bounce', 'motion-safe:[animation-duration:6s]');
+    expect(preview.querySelector('[class*="animate-"]')).toBeNull();
+    expect(preview.querySelector('[class*="animation-duration"]')).toBeNull();
+  });
+  it('creates a real member and password-free session through the hero registration link', async () => {
+    mount(<App />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('link', { name: 'Get Started Free', exact: true }));
+    expect(screen.getByLabelText('Current route')).toHaveTextContent('/register');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Your space starts here.');
+    await user.type(screen.getByLabelText('Display Name', { exact: true }), 'New Writer');
+    await user.type(screen.getByLabelText('Username', { exact: true }), 'new-writer');
+    await user.type(screen.getByLabelText('Password', { exact: true }), 'local-demo');
+    await user.type(screen.getByLabelText('Confirm Password', { exact: true }), 'local-demo');
+    await user.click(screen.getByRole('button', { name: 'Create Account', exact: true }));
+    expect(screen.getByLabelText('Current route')).toHaveTextContent('/blogs');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('All Blogs');
+    const users = JSON.parse(localStorage.getItem('writespace_users'));
+    expect(users).toHaveLength(2);
+    expect(users[0]).toEqual(member);
+    expect(users[1]).toEqual({
+      id: expect.any(String), createdAt: expect.any(String), displayName: 'New Writer',
+      username: 'new-writer', password: 'local-demo', role: 'user',
+    });
+    expect(JSON.parse(localStorage.getItem('writespace_session'))).toEqual({
+      userId: users[1].id, username: 'new-writer', displayName: 'New Writer', role: 'user',
+    });
+  });
+  it.each([
+    ['Home', '/', 'WriteSpace'], ['All Blogs', '/login', 'Welcome back.'],
+    ['Login', '/login', 'Welcome back.'], ['Register', '/register', 'Your space starts here.'],
+  ])('clicks the public footer %s link through the real route and guard', async (name, route, heading) => {
+    savePosts([post]);
+    mount(<App />);
+    await userEvent.setup().click(within(screen.getByRole('navigation', { name: 'Footer navigation' }))
+      .getByRole('link', { name, exact: true }));
+    expect(screen.getByLabelText('Current route').textContent).toBe(route);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(heading);
+    expect(localStorage.getItem('writespace_session')).toBeNull();
+    expect(getPosts()).toEqual([post]);
+    expect(JSON.parse(localStorage.getItem('writespace_users'))).toEqual([member]);
+  });
+  it('logs in through the hero then clicks member reading, dashboard and list-card editing links', async () => {
+    savePosts([post, other]);
+    mount(<App />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('link', { name: 'Start Reading', exact: true }));
+    await user.type(screen.getByLabelText('Username', { exact: true }), 'ada');
+    await user.type(screen.getByLabelText('Password', { exact: true }), 'demo');
+    await user.click(screen.getByRole('button', { name: 'Login', exact: true }));
+    const session = { userId: 'ada', username: 'ada', displayName: 'Ada Writer', role: 'user' };
+    expect(JSON.parse(localStorage.getItem('writespace_session'))).toEqual(session);
+    await user.click(within(screen.getByRole('navigation', { name: 'Member navigation' }))
+      .getByRole('link', { name: 'WriteSpace', exact: true }));
+    await user.click(screen.getByRole('link', { name: 'Start Reading', exact: true }));
+    expect(screen.getByLabelText('Current route').textContent).toBe('/blogs');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('All Blogs');
+    await user.click(within(screen.getByRole('navigation', { name: 'Member navigation' }))
+      .getByRole('link', { name: 'WriteSpace', exact: true }));
+    await user.click(screen.getByRole('link', { name: 'Go to Dashboard', exact: true }));
+    expect(screen.getByLabelText('Current route').textContent).toBe('/blogs');
+    expect(screen.queryByRole('link', { name: 'Edit Another voice' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Edit First thought', exact: true }));
+    expect(screen.getByLabelText('Current route').textContent).toBe('/edit/one');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Edit post');
+    expect(screen.getByLabelText('Title')).toHaveValue(post.title);
+    expect(screen.getByLabelText('Content')).toHaveValue(post.content);
+    expect(getPosts()).toEqual([post, other]);
+    expect(JSON.parse(localStorage.getItem('writespace_session'))).toEqual(session);
+  });
   it('shows exact product copy, features, empty message and footer routes/year', () => {
     mount(<LandingPage />);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('WriteSpace');

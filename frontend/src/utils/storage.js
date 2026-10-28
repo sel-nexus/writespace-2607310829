@@ -34,6 +34,39 @@ function readArray(key, validate) {
   }
 }
 
+/** Read the complete collection before mutation; never substitute for unreadable data.
+ * Args: key: Browser collection key. validate: Record validator. label: Error context.
+ * Returns: All stored records, or an empty array only when the key is absent.
+ * Raises: Error for unavailable storage, malformed JSON or any invalid record.
+ */
+function readMutationArray(key, validate, label) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return [];
+    const records = JSON.parse(raw);
+    if (!Array.isArray(records) || !records.every(validate)) throw new Error('Invalid collection');
+    return records;
+  } catch {
+    throw new Error(`Could not read ${label}. Browser storage is unavailable or contains invalid data.`);
+  }
+}
+
+/** Read complete posts for mutation.
+ * Returns: Stored posts, or an empty array for an absent key.
+ * Raises: Error rather than discard unreadable or invalid records.
+ */
+export function getPostsForMutation() {
+  return readMutationArray('writespace_posts', isPost, 'posts');
+}
+
+/** Read complete accounts for mutation.
+ * Returns: Stored accounts, or an empty array for an absent key.
+ * Raises: Error rather than discard unreadable or invalid records.
+ */
+export function getUsersForMutation() {
+  return readMutationArray('writespace_users', isUser, 'users');
+}
+
 /** Save valid arrays atomically or raise a clear error rather than claim success. */
 function saveArray(key, records, validate, label) {
   if (!Array.isArray(records) || !records.every(validate)) {

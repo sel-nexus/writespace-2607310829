@@ -1,5 +1,5 @@
 /** Provide persistent role-aware navigation and resilient local logout. */
-import { useEffect, useState } from 'react';
+import { startTransition, useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar } from './Avatar.jsx';
@@ -19,12 +19,15 @@ export function Navbar({ session, onSessionChange }) {
   const links = [['/blogs', 'All Blogs'], ['/write', 'Write']];
   if (session.role === 'admin') links.push(['/admin', 'Dashboard'], ['/users', 'Users']);
 
-  /** Clear storage before refreshing the parent and navigating; retain errors on failure. */
+  /** Clear storage, then transition home and refresh identity together; retain errors on failure. */
   function logout() {
     try {
       clearSession();
-      onSessionChange();
-      navigate('/');
+      // Match the router's transition priority so guards never see a cleared session on the old route.
+      startTransition(() => {
+        navigate('/');
+        onSessionChange();
+      });
     } catch (cause) {
       setError(cause.message);
     }

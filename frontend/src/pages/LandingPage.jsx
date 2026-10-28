@@ -39,15 +39,18 @@ export default function LandingPage({ session = null }) {
                 </Link>
               </div>
             </div>
-            <aside className="rounded-2xl border border-indigo-100 bg-indigo-50 p-6 sm:p-10" aria-label="Inside your journal">
-              <p className="mb-6 text-sm font-semibold text-indigo-700 motion-safe:animate-pulse">Inside your journal</p>
+            <aside
+              className="rounded-2xl border border-indigo-100 bg-indigo-50 p-6 motion-safe:animate-bounce motion-safe:[animation-duration:6s] sm:p-10"
+              aria-label="Inside your journal"
+            >
+              <p className="mb-6 text-sm font-semibold text-indigo-700">Inside your journal</p>
               {latest.length ? (
                 <div className="shadow-xl">
                   <BlogCard post={latest[0]} session={session} />
                 </div>
               ) : (
                 <div className="border-l-4 border-indigo-600 py-8 pl-6">
-                  <span aria-hidden="true" className="block font-[Georgia] text-6xl text-indigo-600 motion-safe:animate-pulse">
+                  <span aria-hidden="true" className="block font-[Georgia] text-6xl text-indigo-600">
                     “
                   </span>
                   <p className="font-[Georgia] text-3xl leading-snug">Good stories start with a little room to think.</p>
