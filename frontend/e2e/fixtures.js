@@ -18,7 +18,7 @@ export { expect };
 /** Save HTML, accessibility and computed styles beside a human-review screenshot. */
 export async function captureEvidence(page, testInfo, name) {
   const data = {
-    accessibility: await page.accessibility.snapshot(),
+    accessibility: await page.locator('body').ariaSnapshot(),
     html: await page.content(),
     styles: await page.locator('main').evaluate((element) => {
       const style = getComputedStyle(element);
