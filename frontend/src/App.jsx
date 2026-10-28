@@ -10,6 +10,8 @@ import LandingPage from './pages/LandingPage.jsx';
 import Home from './pages/Home.jsx';
 import ReadBlog from './pages/ReadBlog.jsx';
 import WriteBlog from './pages/WriteBlog.jsx';
+import AdminDashboard from './pages/AdminDashboard.jsx';
+import UserManagement from './pages/UserManagement.jsx';
 import { getSession } from './utils/auth.js';
 
 /** Mount identity, reading and writing pages, preserving administration guards. */
@@ -89,7 +91,7 @@ export default function App() {
             path={path}
             element={(
               <ProtectedRoute adminOnly>
-                {shell}
+                {path === '/admin' ? <AdminDashboard /> : <UserManagement />}
               </ProtectedRoute>
             )}
           />
