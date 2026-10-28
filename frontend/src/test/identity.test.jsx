@@ -422,7 +422,7 @@ describe('accessible forms and parent session refresh', () => {
     expect(getUsers()[0].displayName).toBe('Ada Writer');
     await user.click(screen.getByRole('button', { name: 'Account: Ada Writer', exact: true }));
     await user.click(screen.getByRole('button', { name: 'Logout' }));
-    await user.click(screen.getByRole('link', { name: 'Login', exact: true }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Public navigation' })).getByRole('link', { name: 'Login', exact: true }));
     await user.type(screen.getByLabelText('Username'), 'ada');
     await user.type(screen.getByLabelText('Password'), 'demo-pass');
     await user.click(screen.getByRole('button', { name: 'Login', exact: true }));

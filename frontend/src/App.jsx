@@ -6,9 +6,12 @@ import { PublicNavbar } from './components/PublicNavbar.jsx';
 import { ProtectedRoute } from './components/ProtectedRoute.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
+import LandingPage from './pages/LandingPage.jsx';
+import Home from './pages/Home.jsx';
+import ReadBlog from './pages/ReadBlog.jsx';
 import { getSession } from './utils/auth.js';
 
-/** Mount identity pages and guarded navigation-only surfaces for the other slices. */
+/** Mount identity and reading pages, preserving guards for the remaining slices. */
 export default function App() {
   const [session, setSessionState] = useState(getSession);
   const location = useLocation();
@@ -29,8 +32,12 @@ export default function App() {
     <main id="main-content" className="mx-auto max-w-6xl px-4 py-16 text-slate-800">
       <h1 className="font-[Georgia] text-4xl font-bold">Your writing space</h1>
       <p className="mt-4 text-slate-600">Use the navigation to move around your local account.</p>
-      <p className="mt-6 text-sm text-slate-600">Local-only demo. Passwords are plaintext; never use real credentials or sensitive data.</p>
-      <Link to="/" className="mt-8 inline-block rounded-lg px-4 py-2 text-indigo-700 underline focus-visible:ring-2">Back to Home</Link>
+      <p className="mt-6 text-sm text-slate-600">
+        Local-only demo. Passwords are plaintext; never use real credentials or sensitive data.
+      </p>
+      <Link to="/" className="mt-8 inline-block rounded-lg px-4 py-2 text-indigo-700 underline focus-visible:ring-2">
+        Back to Home
+      </Link>
     </main>
   );
 
@@ -45,10 +52,26 @@ export default function App() {
         <PublicNavbar session={session} />
       )}
       <Routes>
-        <Route path="/" element={shell} />
+        <Route path="/" element={<LandingPage session={session} />} />
         <Route path="/login" element={<LoginPage onSessionChange={onSessionChange} />} />
         <Route path="/register" element={<RegisterPage onSessionChange={onSessionChange} />} />
-        {['/blogs', '/blog/:id', '/write', '/edit/:id'].map((path) => (
+        <Route
+          path="/blogs"
+          element={(
+            <ProtectedRoute>
+              <Home />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/blog/:id"
+          element={(
+            <ProtectedRoute>
+              <ReadBlog />
+            </ProtectedRoute>
+          )}
+        />
+        {['/write', '/edit/:id'].map((path) => (
           <Route
             key={path}
             path={path}
